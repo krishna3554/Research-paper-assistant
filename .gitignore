@@ -1,4 +1,32 @@
-node_modules
-dist
+# Python
+venv/
+.venv/
+backend/.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Chroma
+backend/chroma_db/
+chroma_db/
+
+# Environment
+.env
+backend/.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# VSCode
+.vscode/
+
+# OS
 .DS_Store
-*.local

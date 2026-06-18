@@ -1,0 +1,11 @@
+The Transformer architecture was introduced in the paper "Attention Is All You Need" by Vaswani et al. in 2017.
+
+The main idea of the Transformer is to replace recurrence with self-attention. Instead of processing tokens one after another like an RNN, the Transformer allows every token to attend to every other token in the sequence.
+
+The original Transformer uses multi-head attention. Multi-head attention lets the model learn different relationships between words at the same time. In the base Transformer model, the authors used 8 attention heads.
+
+The Transformer also uses positional encoding because self-attention alone does not know the order of tokens. Positional encodings are added to token embeddings so the model can use sequence order.
+
+The encoder is made of stacked self-attention and feed-forward layers. The decoder uses masked self-attention, encoder-decoder attention, and feed-forward layers.
+
+The Transformer achieved strong results on machine translation tasks and became the foundation for many later language models.
