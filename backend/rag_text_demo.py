@@ -3,7 +3,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
-from langchain_community.document_loaders import TextLoader
+from langchain_community.document_loaders import TextLoader, PyMuPDFLoader
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
@@ -12,6 +12,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 load_dotenv()
 
 TEXT_DIR = Path("data/texts")
+PDF_DIR = Path("data/pdfs")
 CHROMA_DIR = Path(os.getenv("CHROMA_DIR", "chroma_db"))
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
@@ -27,6 +28,23 @@ def load_text_documents():
 
         documents.extend(loaded_docs)
     
+    return documents
+
+def load_pdf_documents():
+    documents = []
+
+    for path in PDF_DIR.glob("*.pdf"):
+        loader = PyMuPDFLoader(str(path))
+        loaded_docs = loader.load()
+
+        for doc in loaded_docs:
+            doc.metadata["source"] = path.name
+
+            page = doc.metadata.get("page")
+            if page is not None:
+                doc.metadata["page"] = page + 1
+        documents.extend(loaded_docs)
+
     return documents
 
 def split_documents(documents):
@@ -63,15 +81,28 @@ def format_docs(docs):
 
     for index, doc in enumerate(docs, start=1):
         source = doc.metadata.get("source", "unknown")
+        page = doc.metadata.get("page")
+
+        if page is not None:
+            citations = f"{source}, page {page}"
+        else:
+            citations = source
+
         formatted.append(
-            f"[Source {index}: {source}]\n{doc.page_content}"
+            f"[Source {index}: {citations}]\n{doc.page_content}"
         )
     
     return "\n\n".join(formatted)
 
 def main():
     print("Loading text documents...")
-    documents = load_text_documents()
+    text_documents = load_text_documents()
+    pdf_documents = load_pdf_documents()
+
+    documents = text_documents + pdf_documents
+
+    print(f"Loaded {len(text_documents)} text documents")
+    print(f"Loaded {len(pdf_documents)} PDF documents")
     print(f"Loaded {len(documents)} documents")
 
     print("Splitting documents into chunks...")
@@ -139,8 +170,15 @@ Question:
 
         print("\nRetrieved sources: ")
         for index, doc in enumerate(retrieved_docs, start=1):
-            print(f"- Source {index} : {doc.metadata.get('source')}")
-        print()
+            source = doc.metadata.get("source", "unknown")
+            page = doc.metadata.get("page")
+
+            if page is not None:
+                print(f"[Source {index}: {source}, page {page}]")
+            else:
+                print(f"[Source {index}: {source}]")
+
+            print()
 
 if __name__ == "__main__":
     main()
