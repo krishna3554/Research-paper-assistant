@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: papermind_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: papermind
+      POSTGRES_PASSWORD: papermind_password
+      POSTGRES_DB: papermind
+    ports:
+      - "5432:5432"
+    volumes:
+      - papermind_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  papermind_postgres_data:
+
+      
+

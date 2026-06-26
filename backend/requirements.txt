@@ -6,3 +6,11 @@ chromadb
 pymupdf
 python-dotenv
 sentence-transformers
+fastapi
+uvicorn
+pydantic
+python-multipart
+sqlalchemy
+psycopg[binary]
+alembic
+boto3
