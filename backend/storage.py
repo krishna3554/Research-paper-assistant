@@ -1,6 +1,6 @@
 import os
 from uuid import uuid4
-
+from pathlib import Path
 import boto3
 from botocore.client import Config
 from dotenv import load_dotenv
@@ -56,3 +56,13 @@ def upload_pdf_to_storage(
     )
 
     return storage_key
+
+def download_file_from_storage(storage_key: str, destination: Path) -> None:
+    client = get_storage_client()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    
+    client.download_file(
+        Bucket=S3_BUCKET_NAME,
+        Key=storage_key,
+        Filename=str(destination),
+    )

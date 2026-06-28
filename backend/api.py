@@ -1,8 +1,12 @@
 from pathlib import Path
-from fastapi import FastAPI, File, UploadFilr
+from fastapi import FastAPI, File, UploadFile, Depends 
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from db import get_db
+from models import Paper
 from rag_text_demo import PDF_DIR, build_llm, format_docs, load_vector_store, ingest
+from storage import S3_BUCKET_NAME, STORAGE_PROVIDER, upload_pdf_to_storage
 from langchain_core.prompts import ChatPromptTemplate
 
 app = FastAPI(title="PaperMind RAG API")
@@ -96,7 +100,7 @@ def ask_question(request: AskRequest):
         )
     return AskResponse(
         answer=response.content,
-        sources=sources
+        sources=sources,
         retrieved_chunks=retrieved_chunks,
     )
 
@@ -112,23 +116,44 @@ def ingest_documents():
 
 @app.post("/upload")
 
-async def upload_pdf(file: UploadFile = File(...)):
-    PDF_DIR.mkdir(parents=True, exists_ok=True)
+async def upload_pdf(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    PDF_DIR.mkdir(parents=True, exist_ok=True)
 
-    if not file.filename.lower().endwith(".pdf"):
+    if not file.filename.lower().endswith(".pdf"):
         return {
             "status" : "error",
             "message": "Only PDF files are supported right now",
         }
-    destination = PDF_DIR / file.filename
+    file_bytes = await file.read()
 
-    content = await file.read()
-    destination.write_bytes(content)
+    storage_key = upload_pdf_to_storage(
+        file_bytes=file_bytes,
+        filename=file.filename,
+        content_type=file.content_type,
+    )
 
-    ingest()
+    paper = Paper(
+        filename=file.filename,
+        storage_provider=STORAGE_PROVIDER,
+        storage_key=storage_key,
+        file_size=len(file_bytes),
+        mime_type=file.content_type,
+        status="uploaded",
+    )
+
+    db.add(paper)
+    db.commit()
+    db.refresh(paper)
 
     return {
-        "status" : "ok",
-        "filename" : file.filename,
-        "message" : "PDF uploaded and indexed successfully"
+        "status": "ok",
+        "paper_id": paper.id,
+        "filename": paper.filename,
+        "storage_provider": paper.storage_provider,
+        "bucket": S3_BUCKET_NAME,
+        "storage_key": paper.storage_key,
+        "message": "PDF uploaded and metadata saved successfully",
     }
