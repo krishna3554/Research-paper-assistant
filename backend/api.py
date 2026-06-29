@@ -2,7 +2,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, Depends 
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-
+from ingestion import ingest_paper
 from db import get_db
 from models import Paper
 from rag_text_demo import PDF_DIR, build_llm, format_docs, load_vector_store, ingest
@@ -155,5 +155,6 @@ async def upload_pdf(
         "storage_provider": paper.storage_provider,
         "bucket": S3_BUCKET_NAME,
         "storage_key": paper.storage_key,
+        "paper_status": indexed_paper.status,
         "message": "PDF uploaded and metadata saved successfully",
     }
