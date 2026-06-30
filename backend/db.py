@@ -1,17 +1,16 @@
 import os 
 
-from dotenv import load_dotenv
+from config import get_settings
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-load_dotenv()
+settings = get_settings()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
 
-if not DATABASE_URL:
+if not settings.database_url:
     raise RuntimeError("DATABASE_URL is not set")
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(settings.database_url)
 SessionLocal = sessionmaker(
     bind=engine,
     autoflush=False,

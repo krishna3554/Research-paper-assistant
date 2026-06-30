@@ -1,7 +1,7 @@
-import os
+
 from pathlib import Path
 import sys
-from dotenv import load_dotenv
+from config import get_settings
 from langchain_chroma import Chroma
 from langchain_community.document_loaders import TextLoader, PyMuPDFLoader
 from langchain_core.prompts import ChatPromptTemplate
@@ -10,12 +10,12 @@ from langchain_openai import ChatOpenAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(BASE_DIR / ".env")
+settings = get_settings()
 
 TEXT_DIR = BASE_DIR / "data" / "texts"
 PDF_DIR = BASE_DIR / "data" / "pdfs"
-CHROMA_DIR = Path(os.getenv("CHROMA_DIR", BASE_DIR / "chroma_db"))
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+CHROMA_DIR = Path(settings.chroma_dir)
+EMBEDDING_MODEL = settings.embedding_model
 
 def load_text_documents():
     documents = []
@@ -110,9 +110,9 @@ def build_llm():
 
     if provider == "lmstudio":
         return ChatOpenAI(
-            base_url=os.getenv("LLM_STUDIO_URL"),
-            api_key=os.getenv("LLM_STUDIO_API_KEY"),
-            model=os.getenv("LLM_STUDIO_MODEL_NAME"),
+            base_url=settings.lmstudio_base_url,
+            api_key=settings.lmstudio_api_key,
+            model=settings.lmstudio_model_name,
             temperature=0.2,
             timeout=120,
         )
@@ -133,12 +133,9 @@ def build_llm():
             )
 
         return ChatOpenAI(
-            base_url=os.getenv(
-                "OPENROUTER_URL",
-                "https://openrouter.ai/api/v1"
-            ),
+            base_url=settings.openrouter_url,
             openai_api_key=api_key,
-            model=os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324"),
+            model=settings.openrouter_model,
             temperature=0.2,
             timeout=120,
             default_headers={
@@ -195,7 +192,7 @@ def ask():
         search_kwargs={"k":3}
     )
 
-    provider = os.getenv("LLM_PROVIDER", "lmstudio")
+    provider = settings.llm_provider
     print(f"Using LLM provider: {provider}")
 
     llm = build_llm()

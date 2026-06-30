@@ -1,5 +1,5 @@
 from pathlib import Path
-from fastapi import FastAPI, File, UploadFile, Depends 
+from fastapi import FastAPI, File, UploadFile, Depends, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from ingestion import ingest_paper
@@ -8,11 +8,12 @@ from models import Paper
 from rag_text_demo import PDF_DIR, build_llm, format_docs, load_vector_store, ingest
 from storage import S3_BUCKET_NAME, STORAGE_PROVIDER, upload_pdf_to_storage
 from langchain_core.prompts import ChatPromptTemplate
-
+from datetime import datetime
 app = FastAPI(title="PaperMind RAG API")
 
 class AskRequest(BaseModel):
     question: str
+    paper_id: str | None = None
 
 class Source(BaseModel):
     source: str
@@ -26,8 +27,19 @@ class RetrievedChunk(BaseModel):
 class AskResponse(BaseModel):
     answer: str
     sources: list[Source]
-    retireved_chunks: list[RetrievedChunk]
+    retrieved_chunks: list[RetrievedChunk]
 
+class PaperStatusResponse(BaseModel):
+    paper_id: str
+    filename: str
+    status: str
+
+class PaperListItem(BaseModel):
+    id:str
+    filename:str
+    status: str
+    storage_provider: str
+    uploaded_at: datetime
 
 prompt = ChatPromptTemplate.from_messages([
     (
@@ -61,11 +73,37 @@ def health():
 
 @app.post("/ask", response_model=AskResponse)
 
-def ask_question(request: AskRequest):
+def ask_question(
+    request: AskRequest,
+    db:Session = Depends(get_db),
+    ):
+    if not request.question.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Question cannot be empty",
+        )
+
+    if request.paper_id:
+        paper = db.get(Paper, request.paper_id)
+
+        if paper is None:
+            raise HTTPException(status_code=404, detail="Paper not found")
+        if paper.status != "indexed":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Paper is not ready for Q&A. Current status: {paper.status}",
+            )
     vector_store = load_vector_store()
+    
+    search_kwargs = {"k": 3}
+
+    if request.paper_id:
+        search_kwargs["filter"] = {
+            "paper_id": request.paper_id,
+        }
 
     retriever = vector_store.as_retriever(
-        search_kwargs={"k":3}
+        search_kwargs=search_kwargs
     )
 
     retrieved_docs = retriever.invoke(request.question)
@@ -76,8 +114,14 @@ def ask_question(request: AskRequest):
         question=request.question,
     )
 
-    llm = build_llm();
-    response = llm.invoke(messages)
+    llm = build_llm()
+    try:
+        response = llm.invoke(messages)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"LLM provider failed: {exc}",
+        ) from exc
 
     sources = []
 
@@ -92,9 +136,9 @@ def ask_question(request: AskRequest):
 
     for doc in retrieved_docs:
         retrieved_chunks.append(
-            RetrirevedChunk(
+            RetrievedChunk(
                 source = doc.metadata.get("source", "unknown"),
-                page = docs.metadata.get("page"),
+                page = doc.metadata.get("page"),
                 content = doc.page_content,
             )
         )
@@ -117,6 +161,7 @@ def ingest_documents():
 @app.post("/upload")
 
 async def upload_pdf(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
@@ -143,11 +188,11 @@ async def upload_pdf(
         mime_type=file.content_type,
         status="uploaded",
     )
-
+    
     db.add(paper)
     db.commit()
     db.refresh(paper)
-
+    background_tasks.add_task(ingest_paper, paper.id)
     return {
         "status": "ok",
         "paper_id": paper.id,
@@ -155,6 +200,41 @@ async def upload_pdf(
         "storage_provider": paper.storage_provider,
         "bucket": S3_BUCKET_NAME,
         "storage_key": paper.storage_key,
-        "paper_status": indexed_paper.status,
+        "paper_status": paper.status,
         "message": "PDF uploaded and metadata saved successfully",
     }
+
+@app.get("/papers/{paper_id}/status", response_model=PaperStatusResponse)
+def get_paper_status(
+    paper_id: str,
+    db: Session = Depends(get_db)
+):
+    paper = db.get(Paper, paper_id)
+
+    if paper is None:
+        raise HTTPException(status_code=404, detail=f"Paper not found: {paper_id}")
+
+    return PaperStatusResponse(
+        paper_id=paper.id,
+        filename=paper.filename,
+        status=paper.status,
+    )
+
+@app.get("/papers", response_model=list[PaperListItem])
+def list_papers(db:Session = Depends(get_db)):
+    papers = (
+        db.query(Paper)
+        .order_by(Paper.uploaded_at.desc())
+        .all()
+    )
+
+    return [
+        PaperListItem(
+            id = paper.id,
+            filename = paper.filename,
+            status = paper.status,
+            storage_provider = paper.storage_provider,
+            uploaded_at = paper.uploaded_at,
+        )
+        for paper in papers
+    ]

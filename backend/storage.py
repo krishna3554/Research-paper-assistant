@@ -1,36 +1,35 @@
-import os
+
 from uuid import uuid4
-from pathlib import Path
+from config import get_settings
 import boto3
 from botocore.client import Config
-from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
-
-STORAGE_PROVIDER = os.getenv("STORAGE_PROVIDER", "minio")
-S3_ENDPOINT_URL = os.getenv("S3_ENDPOINT_URL")
-S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
-S3_ACCESS_KEY_ID = os.getenv("S3_ACCESS_KEY_ID")
-S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY")
-S3_REGION = os.getenv("S3_REGION", "us-east-1")
+settings = get_settings()
+STORAGE_PROVIDER = settings.storage_provider
+S3_ENDPOINT_URL = settings.s3_endpoint_url
+S3_BUCKET_NAME = settings.s3_bucket_name
+S3_ACCESS_KEY_ID = settings.s3_access_key_id
+S3_SECRET_ACCESS_KEY = settings.s3_secret_access_key
+S3_REGION = settings.s3_region  
 
 def get_storage_client():
-    if not S3_BUCKET_NAME:
+    if not settings.s3_bucket_name:
         raise RuntimeError("S3_BUCKET_NAME is not set")
     
-    if not S3_ACCESS_KEY_ID or not S3_SECRET_ACCESS_KEY:
+    if not settings.s3_access_key_id or not settings.s3_secret_access_key:
         raise RuntimeError("S3 credentials not set")
 
     client_kwargs = {
         "service_name": "s3",
-        "aws_access_key_id": S3_ACCESS_KEY_ID,
-        "aws_secret_access_key": S3_SECRET_ACCESS_KEY,
-        "region_name": S3_REGION,
+        "aws_access_key_id": settings.s3_access_key_id,
+        "aws_secret_access_key": settings.s3_secret_access_key,
+        "region_name": settings.s3_region,
         "config": Config(signature_version="s3v4")
     }
 
     if S3_ENDPOINT_URL:
-        client_kwargs["endpoint_url"] = S3_ENDPOINT_URL
+        client_kwargs["endpoint_url"] = settings.s3_endpoint_url
 
     return boto3.client(**client_kwargs)
 
