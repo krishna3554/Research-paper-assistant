@@ -28,8 +28,100 @@ const tabs = [
   { id: "graph", label: "Graph", icon: Network }
 ];
 
-const filters = ["All", "Methodology", "Scaling", "Retrieval", "Conflicts"];
+import { getPapers } from "./lib/api";
 
+const [apiPapers, setApiPapers] = useState([]);
+const [apiError, setApiError] = useState("");
+const [isLoadingPapers, setIsLoadingPapers] = useState(false);
+
+useEffect(() => {
+  let ignore = false;
+
+  async function loadPapers() {
+    setIsLoadingPapers(true);
+    setApiError("");
+
+    try {
+      const data = await getPapers();
+      
+      if (!ignore) {
+        setApiPapers(data);
+      }
+    } catch (error) {
+      if (!ignore) {
+        setApiError(error.message);
+      }
+    } finally {
+      if (!ignore) {
+        setIsLoadingPapers(false);
+      }
+    }
+  }
+
+  loadPapers();
+  refreshPapers();
+  return () => {
+    ignore = true;
+  };
+}, []);
+
+const filters = ["All", "Methodology", "Scaling", "Retrieval", "Conflicts"];
+const backendPapers = apiPapers.map((paper) => ({
+  id: paper.id,
+  title: paper.filename.replace(/\.pdf$/i, ""),
+  authors: "Uploaded paper",
+  year: new Date(paper.uploaded_at).getFullYear(),
+  tags: [paper.status, paper.storage_provider],
+  status: paper.status,
+}));
+
+async function handleUploadFile(event) {
+  const file = event.target.files?.[0];
+
+  if (!file) return;
+
+  if (file.type !== "application/pdf") {
+    setUploadStatus("Only PDF files are supported.");
+    return;
+  }
+
+  setIsUploading(true);
+  setUploadStatus("Uploading paper...");
+
+  try {
+    const result = await uploadPaper(file);
+    setUploadStatus(
+      `Uploaded ${result.filename}. Indexing started.`
+    );
+    await refreshPapers();
+  } catch (error) {
+    setUploadStatus(error.message);
+  } finally {
+    setIsUploading(false);
+    event.target.value = "";
+  }
+}
+
+import { getPapers, uploadPaper } from "./lib/api";
+const [isUploadOpen, setIsUploadOpen] = useState(false);
+
+const [uploadStatus, setUploadStatus] = useState("");
+const [isUploading, setIsUploading] = useState(false);
+
+async function refreshPapers() {
+  setIsLoadingPapers(true);
+  setApiError("");
+
+  try {
+    const data = await getPapers();
+    setApiPapers(data);
+  } catch (error) {
+    setApiError(error.message);
+  } finally {
+    setIsLoadingPapers(false);
+  }
+}
+const visiblePapers = backendPapers.length > 0 ? backendPapers : papers;
 function classNames(...values) {
   return values.filter(Boolean).join(" ");
 }
