@@ -20,6 +20,7 @@ import {
   X
 } from "lucide-react";
 import { answers, claims, collections, conflicts, papers, reviewSections } from "./data/researchData";
+import { getPapers, uploadPaper } from "./lib/api";
 
 const tabs = [
   { id: "qa", label: "Q&A", icon: MessageSquareText },
@@ -28,100 +29,8 @@ const tabs = [
   { id: "graph", label: "Graph", icon: Network }
 ];
 
-import { getPapers } from "./lib/api";
-
-const [apiPapers, setApiPapers] = useState([]);
-const [apiError, setApiError] = useState("");
-const [isLoadingPapers, setIsLoadingPapers] = useState(false);
-
-useEffect(() => {
-  let ignore = false;
-
-  async function loadPapers() {
-    setIsLoadingPapers(true);
-    setApiError("");
-
-    try {
-      const data = await getPapers();
-      
-      if (!ignore) {
-        setApiPapers(data);
-      }
-    } catch (error) {
-      if (!ignore) {
-        setApiError(error.message);
-      }
-    } finally {
-      if (!ignore) {
-        setIsLoadingPapers(false);
-      }
-    }
-  }
-
-  loadPapers();
-  refreshPapers();
-  return () => {
-    ignore = true;
-  };
-}, []);
-
 const filters = ["All", "Methodology", "Scaling", "Retrieval", "Conflicts"];
-const backendPapers = apiPapers.map((paper) => ({
-  id: paper.id,
-  title: paper.filename.replace(/\.pdf$/i, ""),
-  authors: "Uploaded paper",
-  year: new Date(paper.uploaded_at).getFullYear(),
-  tags: [paper.status, paper.storage_provider],
-  status: paper.status,
-}));
 
-async function handleUploadFile(event) {
-  const file = event.target.files?.[0];
-
-  if (!file) return;
-
-  if (file.type !== "application/pdf") {
-    setUploadStatus("Only PDF files are supported.");
-    return;
-  }
-
-  setIsUploading(true);
-  setUploadStatus("Uploading paper...");
-
-  try {
-    const result = await uploadPaper(file);
-    setUploadStatus(
-      `Uploaded ${result.filename}. Indexing started.`
-    );
-    await refreshPapers();
-  } catch (error) {
-    setUploadStatus(error.message);
-  } finally {
-    setIsUploading(false);
-    event.target.value = "";
-  }
-}
-
-import { getPapers, uploadPaper } from "./lib/api";
-const [isUploadOpen, setIsUploadOpen] = useState(false);
-
-const [uploadStatus, setUploadStatus] = useState("");
-const [isUploading, setIsUploading] = useState(false);
-
-async function refreshPapers() {
-  setIsLoadingPapers(true);
-  setApiError("");
-
-  try {
-    const data = await getPapers();
-    setApiPapers(data);
-  } catch (error) {
-    setApiError(error.message);
-  } finally {
-    setIsLoadingPapers(false);
-  }
-}
-const visiblePapers = backendPapers.length > 0 ? backendPapers : papers;
 function classNames(...values) {
   return values.filter(Boolean).join(" ");
 }
@@ -134,13 +43,78 @@ function App() {
   const [activeTab, setActiveTab] = useState("qa");
   const [activeFilter, setActiveFilter] = useState("All");
   const [isUploadOpen, setUploadOpen] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [apiPapers, setApiPapers] = useState([]);
+  const [apiError, setApiError] = useState("");
+  const [isLoadingPapers, setIsLoadingPapers] = useState(false);
   const [messages, setMessages] = useState(answers);
   const [prompt, setPrompt] = useState("");
   const [insight, setInsight] = useState("Corpus ready: 12 indexed papers, 3 conflicts, 4 methodology clusters.");
 
+  async function refreshPapers() {
+    setIsLoadingPapers(true);
+    setApiError("");
+
+    try {
+      const data = await getPapers();
+      setApiPapers(data);
+    } catch (error) {
+      setApiError(error.message);
+    } finally {
+      setIsLoadingPapers(false);
+    }
+  }
+
+  async function handleUploadFile(event) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      setUploadStatus("Only PDF files are supported.");
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadStatus("Uploading paper...");
+
+    try {
+      const result = await uploadPaper(file);
+      setUploadStatus(`Uploaded ${result.filename}. Indexing started.`);
+      await refreshPapers();
+    } catch (error) {
+      setUploadStatus(error.message);
+    } finally {
+      setIsUploading(false);
+      event.target.value = "";
+    }
+  }
+
+  useEffect(() => {
+    refreshPapers();
+  }, []);
+
+  const backendPapers = apiPapers.map((paper) => ({
+    id: paper.id,
+    title: paper.filename.replace(/\.pdf$/i, ""),
+    authors: "Uploaded paper",
+    year: new Date(paper.uploaded_at).getFullYear(),
+    type: paper.status,
+    collection: "all",
+    tags: [paper.status, paper.storage_provider],
+    status: paper.status === "indexed" ? "stable" : paper.status,
+    color: paper.status === "indexed" ? "green" : "violet",
+    abstract: `${paper.filename} is stored in ${paper.storage_provider} and currently marked ${paper.status}.`,
+    methodology: "Uploaded through the PaperMind ingestion pipeline.",
+    citations: 0,
+    confidence: paper.status === "indexed" ? 0.82 : 0.25
+  }));
+  const visiblePapers = backendPapers.length > 0 ? backendPapers : papers;
+
   const filteredPapers = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return papers.filter((paper) => {
+    return visiblePapers.filter((paper) => {
       const collectionMatch = activeCollection === "all" || paper.collection === activeCollection;
       const filterMatch =
         activeFilter === "All" ||
@@ -155,9 +129,9 @@ function App() {
           .includes(normalized);
       return collectionMatch && filterMatch && queryMatch;
     });
-  }, [activeCollection, activeFilter, query]);
+  }, [activeCollection, activeFilter, query, visiblePapers]);
 
-  const activePaper = papers.find((paper) => paper.id === activePaperId) ?? papers[0];
+  const activePaper = visiblePapers.find((paper) => paper.id === activePaperId) ?? visiblePapers[0];
   const activeCollectionLabel =
     collections.find((collection) => collection.id === activeCollection)?.name ?? "Research Workspace";
 
@@ -234,9 +208,12 @@ function App() {
       activePaper={activePaper}
       activePaperId={activePaperId}
       activeTab={activeTab}
+      apiError={apiError}
       filteredPapers={filteredPapers}
       insight={insight}
+      isLoadingPapers={isLoadingPapers}
       isUploadOpen={isUploadOpen}
+      isUploading={isUploading}
       messages={messages}
       prompt={prompt}
       query={query}
@@ -247,8 +224,10 @@ function App() {
       setPrompt={setPrompt}
       setQuery={setQuery}
       setUploadOpen={setUploadOpen}
+      uploadStatus={uploadStatus}
       onAction={runAction}
       onHome={() => navigate("landing")}
+      onUploadFile={handleUploadFile}
       onSubmit={handleSubmit}
     />
   );
@@ -373,9 +352,12 @@ function WorkspacePage({
   activePaper,
   activePaperId,
   activeTab,
+  apiError,
   filteredPapers,
   insight,
+  isLoadingPapers,
   isUploadOpen,
+  isUploading,
   messages,
   prompt,
   query,
@@ -386,8 +368,10 @@ function WorkspacePage({
   setPrompt,
   setQuery,
   setUploadOpen,
+  uploadStatus,
   onAction,
   onHome,
+  onUploadFile,
   onSubmit
 }) {
   return (
@@ -407,7 +391,9 @@ function WorkspacePage({
             activeCollectionLabel={activeCollectionLabel}
             activePaperId={activePaperId}
             activeFilter={activeFilter}
+            apiError={apiError}
             filteredPapers={filteredPapers}
+            isLoadingPapers={isLoadingPapers}
             setActiveFilter={setActiveFilter}
             setActivePaperId={setActivePaperId}
             onUpload={() => setUploadOpen(true)}
@@ -427,7 +413,14 @@ function WorkspacePage({
         </div>
       </section>
 
-      {isUploadOpen && <UploadModal onClose={() => setUploadOpen(false)} />}
+      {isUploadOpen && (
+        <UploadModal
+          isUploading={isUploading}
+          uploadStatus={uploadStatus}
+          onClose={() => setUploadOpen(false)}
+          onUploadFile={onUploadFile}
+        />
+      )}
     </main>
   );
 }
@@ -535,7 +528,9 @@ function PaperRail({
   activeCollectionLabel,
   activePaperId,
   activeFilter,
+  apiError,
   filteredPapers,
+  isLoadingPapers,
   setActiveFilter,
   setActivePaperId,
   onUpload
@@ -582,7 +577,15 @@ function PaperRail({
       </div>
 
       <div className="paper-list no-scrollbar">
-        {filteredPapers.length === 0 ? (
+        {isLoadingPapers ? (
+          <div className="m-4 border border-stone-700 bg-[#20201c] p-5 text-stone-300">
+            Loading papers...
+          </div>
+        ) : apiError ? (
+          <div className="m-4 border border-red-400/40 bg-red-950/20 p-5 text-red-100">
+            {apiError}
+          </div>
+        ) : filteredPapers.length === 0 ? (
           <div className="m-4 border border-dashed border-stone-600 p-5 text-stone-400">
             No matching papers. Try another author, method, or concept.
           </div>
@@ -832,7 +835,7 @@ function GraphPanel({ activePaper }) {
   );
 }
 
-function UploadModal({ onClose }) {
+function UploadModal({ isUploading, uploadStatus, onClose, onUploadFile }) {
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Upload papers">
       <div className="modal-panel">
@@ -845,11 +848,19 @@ function UploadModal({ onClose }) {
             <X size={19} />
           </button>
         </div>
-        <div className="upload-target">
+        <label className="upload-target">
+          <input
+            accept="application/pdf"
+            disabled={isUploading}
+            hidden
+            type="file"
+            onChange={onUploadFile}
+          />
           <Upload size={28} />
-          <strong>Drop PDFs here</strong>
-          <span>or paste a DOI, arXiv URL, or publisher link below</span>
-        </div>
+          <strong>{isUploading ? "Uploading..." : "Choose a PDF"}</strong>
+          <span>Stored in object storage, then indexed in the background</span>
+        </label>
+        {uploadStatus && <p className="mt-3 text-sm text-stone-300">{uploadStatus}</p>}
         <label className="mt-4 block">
           <span className="mb-2 block text-sm uppercase tracking-[0.16em] text-stone-500">DOI or URL</span>
           <input className="modal-input" placeholder="10.48550/arXiv.1706.03762" />
