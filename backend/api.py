@@ -1,15 +1,26 @@
-from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, Depends, BackgroundTasks, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from ingestion import ingest_paper
 from db import get_db
 from models import Paper
-from rag_text_demo import PDF_DIR, build_llm, format_docs, load_vector_store, ingest
+from rag_text_demo import build_llm, format_docs, load_vector_store, ingest
 from storage import S3_BUCKET_NAME, STORAGE_PROVIDER, upload_pdf_to_storage
 from langchain_core.prompts import ChatPromptTemplate
 from datetime import datetime
 app = FastAPI(title="PaperMind RAG API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class AskRequest(BaseModel):
     question: str
@@ -165,14 +176,25 @@ async def upload_pdf(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
-    PDF_DIR.mkdir(parents=True, exist_ok=True)
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files are supported right now",
+        )
 
-    if not file.filename.lower().endswith(".pdf"):
-        return {
-            "status" : "error",
-            "message": "Only PDF files are supported right now",
-        }
+    if file.content_type and file.content_type != "application/pdf":
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded file must have application/pdf content type",
+        )
+
     file_bytes = await file.read()
+
+    if not file_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded PDF is empty",
+        )
 
     storage_key = upload_pdf_to_storage(
         file_bytes=file_bytes,

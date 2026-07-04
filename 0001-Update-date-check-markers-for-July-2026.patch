@@ -1,0 +1,61 @@
+From a0bcc0b1b3464d10e4670a0592e51602cdf101ea Mon Sep 17 00:00:00 2001
+From: krishna3554 <krishlokhande45@gmail.com>
+Date: Sat, 4 Jul 2026 00:11:25 +0530
+Subject: [PATCH] Update date-check markers for July 2026
+
+---
+ src/contributing.md            | 6 +++---
+ src/diagnostics/translation.md | 4 ++--
+ 2 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/contributing.md b/src/contributing.md
+index 4e292c54..0c1feb3f 100644
+--- a/src/contributing.md
++++ b/src/contributing.md
+@@ -444,20 +444,20 @@ Just a few things to keep in mind:
+     For the action to pick the date, add a special annotation before specifying the date:
+ 
+     ```md
+-    <!-- date-check --> Nov 2025
++    <!-- date-check --> Jul 2026
+     ```
+ 
+     Example:
+ 
+     ```md
+-    As of <!-- date-check --> Nov 2025, the foo did the bar.
++    As of <!-- date-check --> Jul 2026, the foo did the bar.
+     ```
+ 
+     For cases where the date should not be part of the visible rendered output,
+     use the following instead:
+ 
+     ```md
+-    <!-- date-check: Nov 2025 -->
++    <!-- date-check: Jul 2026 -->
+     ```
+ 
+   - A link to a relevant WG, tracking issue, `rustc` rustdoc page, or similar, that may provide
+diff --git a/src/diagnostics/translation.md b/src/diagnostics/translation.md
+index a22ede5e..81213822 100644
+--- a/src/diagnostics/translation.md
++++ b/src/diagnostics/translation.md
+@@ -2,13 +2,13 @@
+ 
+ <div class="warning">
+ rustc's current diagnostics translation infrastructure (as of
+-<!-- date-check --> October 2024
++<!-- date-check --> July 2026
+ ) unfortunately causes some friction for compiler contributors, and the current
+ infrastructure is mostly pending a redesign that better addresses needs of both
+ compiler contributors and translation teams.
+ Note that there is no current
+ active redesign proposals (as of
+-<!-- date-check --> October 2024
++<!-- date-check --> July 2026
+ )!
+ 
+ Please see the tracking issue <https://github.com/rust-lang/rust/issues/132181>
+-- 
+2.43.0
+

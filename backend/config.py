@@ -14,7 +14,7 @@ class Settings(BaseSettings):
         extra="ignore" 
     )
 
-    llm_provider: str = Field(default="llmstudio", alias="LLM_PROVIDER")
+    llm_provider: str = Field(default="lmstudio", alias="LLM_PROVIDER")
 
     lm_studio_url: str | None = Field(default=None, alias="LLM_STUDIO_URL")
     lm_studio_api_key: str | None = Field(default=None, alias="LLM_STUDIO_API_KEY")

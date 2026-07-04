@@ -43,6 +43,8 @@ function App() {
   const [activeTab, setActiveTab] = useState("qa");
   const [activeFilter, setActiveFilter] = useState("All");
   const [isUploadOpen, setUploadOpen] = useState(false);
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [uploadMode, setUploadMode] = useState("pdf");
   const [uploadStatus, setUploadStatus] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [apiPapers, setApiPapers] = useState([]);
@@ -91,24 +93,20 @@ function App() {
     }
   }
 
-  useEffect(() => {
-    refreshPapers();
-  }, []);
-
   const backendPapers = apiPapers.map((paper) => ({
     id: paper.id,
     title: paper.filename.replace(/\.pdf$/i, ""),
     authors: "Uploaded paper",
     year: new Date(paper.uploaded_at).getFullYear(),
-    type: paper.status,
     collection: "all",
-    tags: [paper.status, paper.storage_provider],
-    status: paper.status === "indexed" ? "stable" : paper.status,
-    color: paper.status === "indexed" ? "green" : "violet",
+    type: paper.status,
+    status: paper.status === "indexed" ? "indexed" : "processing",
+    citations: 0,
+    confidence: paper.status === "indexed" ? 0.82 : 0.32,
     abstract: `${paper.filename} is stored in ${paper.storage_provider} and currently marked ${paper.status}.`,
     methodology: "Uploaded through the PaperMind ingestion pipeline.",
-    citations: 0,
-    confidence: paper.status === "indexed" ? 0.82 : 0.25
+    tags: [paper.status, paper.storage_provider],
+    color: paper.status === "indexed" ? "mint" : "blue"
   }));
   const visiblePapers = backendPapers.length > 0 ? backendPapers : papers;
 
@@ -176,6 +174,14 @@ function App() {
       setActiveTab("review");
       setInsight("Draft review refreshed with chronological and thematic synthesis sections.");
     }
+    if (kind === "graph") {
+      setActiveTab("graph");
+      setInsight("Graph view focused on citation, method, and conflict links for the active source.");
+    }
+    if (kind === "collection") {
+      setActiveCollection("all");
+      setInsight("New collection flow queued. Database-backed collections will land after user accounts.");
+    }
   }
 
   useEffect(() => {
@@ -186,6 +192,16 @@ function App() {
     window.addEventListener("hashchange", syncRoute);
     return () => window.removeEventListener("hashchange", syncRoute);
   }, []);
+
+  useEffect(() => {
+    refreshPapers();
+  }, []);
+
+  useEffect(() => {
+    if (!visiblePapers.some((paper) => paper.id === activePaperId)) {
+      setActivePaperId(visiblePapers[0]?.id ?? "");
+    }
+  }, [activePaperId, visiblePapers]);
 
   function navigate(nextView) {
     const nextHash = nextView === "workspace" ? "#/workspace" : "#/";
@@ -212,6 +228,7 @@ function App() {
       filteredPapers={filteredPapers}
       insight={insight}
       isLoadingPapers={isLoadingPapers}
+      isSidebarOpen={isSidebarOpen}
       isUploadOpen={isUploadOpen}
       isUploading={isUploading}
       messages={messages}
@@ -223,7 +240,10 @@ function App() {
       setActiveTab={setActiveTab}
       setPrompt={setPrompt}
       setQuery={setQuery}
+      setSidebarOpen={setSidebarOpen}
       setUploadOpen={setUploadOpen}
+      setUploadMode={setUploadMode}
+      uploadMode={uploadMode}
       uploadStatus={uploadStatus}
       onAction={runAction}
       onHome={() => navigate("landing")}
@@ -356,6 +376,7 @@ function WorkspacePage({
   filteredPapers,
   insight,
   isLoadingPapers,
+  isSidebarOpen,
   isUploadOpen,
   isUploading,
   messages,
@@ -367,7 +388,10 @@ function WorkspacePage({
   setActiveTab,
   setPrompt,
   setQuery,
+  setSidebarOpen,
   setUploadOpen,
+  setUploadMode,
+  uploadMode,
   uploadStatus,
   onAction,
   onHome,
@@ -377,14 +401,22 @@ function WorkspacePage({
   return (
     <main className="workspace-page min-h-screen bg-[#151512] text-stone-100">
       <div className="grain-overlay" />
-      <TopBar query={query} setQuery={setQuery} onUpload={() => setUploadOpen(true)} onHome={onHome} />
+      <TopBar
+        isSidebarOpen={isSidebarOpen}
+        query={query}
+        setQuery={setQuery}
+        onToggleSidebar={() => setSidebarOpen((current) => !current)}
+        onUpload={() => setUploadOpen(true)}
+        onHome={onHome}
+      />
 
       <section className="relative mx-auto flex w-full max-w-[1540px] flex-col gap-5 px-4 pb-4 pt-4 sm:px-5 lg:px-7">
-        <div className="workspace-grid min-h-[calc(100vh-104px)] overflow-hidden border border-stone-700/80 bg-[#20201c] shadow-panel">
+        <div className={classNames("workspace-grid min-h-[calc(100vh-104px)] overflow-hidden border border-stone-700/80 bg-[#20201c] shadow-panel", !isSidebarOpen && "sidebar-collapsed")}>
           <Sidebar
             activeCollection={activeCollection}
             setActiveCollection={setActiveCollection}
-            totalCount={papers.length}
+            totalCount={filteredPapers.length}
+            onAction={onAction}
           />
 
           <PaperRail
@@ -396,6 +428,7 @@ function WorkspacePage({
             isLoadingPapers={isLoadingPapers}
             setActiveFilter={setActiveFilter}
             setActivePaperId={setActivePaperId}
+            setUploadMode={setUploadMode}
             onUpload={() => setUploadOpen(true)}
           />
 
@@ -416,7 +449,9 @@ function WorkspacePage({
       {isUploadOpen && (
         <UploadModal
           isUploading={isUploading}
+          uploadMode={uploadMode}
           uploadStatus={uploadStatus}
+          setUploadMode={setUploadMode}
           onClose={() => setUploadOpen(false)}
           onUploadFile={onUploadFile}
         />
@@ -425,7 +460,7 @@ function WorkspacePage({
   );
 }
 
-function TopBar({ query, setQuery, onUpload, onHome }) {
+function TopBar({ isSidebarOpen, query, setQuery, onToggleSidebar, onUpload, onHome }) {
   return (
     <header className="workspace-topbar sticky top-0 z-30 border-b border-stone-700/80 bg-[#272722]/95 backdrop-blur">
       <div className="mx-auto grid max-w-[1540px] grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-3 sm:px-5 lg:px-7">
@@ -455,7 +490,12 @@ function TopBar({ query, setQuery, onUpload, onHome }) {
           <button className="icon-button topbar-upload-icon" onClick={onUpload} type="button" aria-label="Upload paper">
             <Upload size={19} />
           </button>
-          <button className="icon-button topbar-panel-toggle" type="button" aria-label="Toggle side panel">
+          <button
+            className={classNames("icon-button topbar-panel-toggle", isSidebarOpen && "active")}
+            onClick={onToggleSidebar}
+            type="button"
+            aria-label="Toggle library panel"
+          >
             <PanelLeft size={19} />
           </button>
           <button className="grid h-11 w-11 place-items-center rounded-full bg-[#cac4ff] text-lg font-medium text-[#262149]">
@@ -477,7 +517,7 @@ function Metric({ label, value, suffix }) {
   );
 }
 
-function Sidebar({ activeCollection, setActiveCollection, totalCount }) {
+function Sidebar({ activeCollection, setActiveCollection, totalCount, onAction }) {
   return (
     <aside className="workspace-sidebar hidden border-r border-stone-700/80 bg-[#282823] p-4 lg:block">
       <p className="eyebrow mb-3">Workspace</p>
@@ -490,11 +530,11 @@ function Sidebar({ activeCollection, setActiveCollection, totalCount }) {
         Library
         <span>{totalCount}</span>
       </button>
-      <button className="nav-row" onClick={() => setActiveCollection("all")} type="button">
+      <button className="nav-row" onClick={() => onAction("compare")} type="button">
         <GitCompareArrows size={18} />
         Compare
       </button>
-      <button className="nav-row" onClick={() => setActiveCollection("all")} type="button">
+      <button className="nav-row" onClick={() => onAction("conflicts")} type="button">
         <CircleAlert size={18} />
         Conflicts
         <span>3</span>
@@ -516,7 +556,7 @@ function Sidebar({ activeCollection, setActiveCollection, totalCount }) {
         ))}
       </div>
 
-      <button className="nav-row mt-8" type="button">
+      <button className="nav-row mt-8" onClick={() => onAction("collection")} type="button">
         <FilePlus2 size={18} />
         New collection
       </button>
@@ -533,8 +573,14 @@ function PaperRail({
   isLoadingPapers,
   setActiveFilter,
   setActivePaperId,
+  setUploadMode,
   onUpload
 }) {
+  function openUpload(mode) {
+    setUploadMode(mode);
+    onUpload();
+  }
+
   return (
     <section className="paper-rail border-r border-stone-700/80 bg-[#11110f]">
       <div className="border-b border-stone-700/80 p-4">
@@ -544,16 +590,22 @@ function PaperRail({
             <h2 className="mt-1 text-2xl font-medium leading-tight">{activeCollectionLabel}</h2>
           </div>
           <div className="flex gap-2">
-            <span className="mini-toggle" />
-            <span className="mini-toggle" />
-            <span className="mini-toggle" />
+            <button className="mini-toggle" onClick={() => openUpload("pdf")} type="button" aria-label="Upload PDF">
+              <Upload size={15} />
+            </button>
+            <button className="mini-toggle" onClick={() => openUpload("doi")} type="button" aria-label="Add DOI">
+              DOI
+            </button>
+            <button className="mini-toggle" onClick={() => openUpload("url")} type="button" aria-label="Add URL">
+              URL
+            </button>
           </div>
         </div>
 
-        <button className="dropzone mt-5" onClick={onUpload} type="button">
+        <button className="dropzone mt-5" onClick={() => openUpload("pdf")} type="button">
           <Upload size={23} />
-          <span>Drop PDFs here or add by DOI</span>
-          <small>Supports PDF, DOI, arXiv URL</small>
+          <span>Upload PDFs or add by DOI</span>
+          <small>PDF works now; DOI and URL are queued states</small>
         </button>
 
         <div className="mt-4 grid grid-cols-3 gap-2">
@@ -667,7 +719,7 @@ function IntelligencePanel({
       </div>
 
       <div className="border-t border-stone-700/80 bg-[#252520] p-4">
-        <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
           <button className="action-button" onClick={() => onAction("compare")} type="button">
             <GitCompareArrows size={17} />
             Compare papers
@@ -679,6 +731,10 @@ function IntelligencePanel({
           <button className="action-button" onClick={() => onAction("review")} type="button">
             <Sparkles size={17} />
             Auto-review
+          </button>
+          <button className="action-button" onClick={() => onAction("graph")} type="button">
+            <Network size={17} />
+            Show graph
           </button>
         </div>
         <form className="chat-input" onSubmit={onSubmit}>
@@ -697,9 +753,11 @@ function IntelligencePanel({
 }
 
 function QaPanel({ messages, activePaper }) {
+  const visibleMessages = messages.slice(-3);
+
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-4">
-      {messages.map((message) => (
+    <div className="qa-panel mx-auto flex max-w-4xl flex-col gap-3">
+      {visibleMessages.map((message) => (
         <article className={classNames("message", message.role === "user" ? "user" : "assistant")} key={message.id}>
           <p>{message.body}</p>
           {message.sources.length > 0 && (
@@ -835,7 +893,7 @@ function GraphPanel({ activePaper }) {
   );
 }
 
-function UploadModal({ isUploading, uploadStatus, onClose, onUploadFile }) {
+function UploadModal({ isUploading, uploadMode, uploadStatus, setUploadMode, onClose, onUploadFile }) {
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Upload papers">
       <div className="modal-panel">
@@ -848,29 +906,54 @@ function UploadModal({ isUploading, uploadStatus, onClose, onUploadFile }) {
             <X size={19} />
           </button>
         </div>
-        <label className="upload-target">
-          <input
-            accept="application/pdf"
-            disabled={isUploading}
-            hidden
-            type="file"
-            onChange={onUploadFile}
-          />
-          <Upload size={28} />
-          <strong>{isUploading ? "Uploading..." : "Choose a PDF"}</strong>
-          <span>Stored in object storage, then indexed in the background</span>
-        </label>
-        {uploadStatus && <p className="mt-3 text-sm text-stone-300">{uploadStatus}</p>}
+        <div className="upload-mode-row" role="tablist" aria-label="Upload mode">
+          {["pdf", "doi", "url"].map((mode) => (
+            <button
+              className={classNames("upload-mode", uploadMode === mode && "active")}
+              key={mode}
+              onClick={() => setUploadMode(mode)}
+              type="button"
+            >
+              {mode.toUpperCase()}
+            </button>
+          ))}
+        </div>
+
+        {uploadMode === "pdf" ? (
+          <label className="upload-target">
+            <input
+              accept="application/pdf"
+              disabled={isUploading}
+              hidden
+              type="file"
+              onChange={onUploadFile}
+            />
+            <Upload size={28} />
+            <strong>{isUploading ? "Uploading..." : "Choose PDF"}</strong>
+            <span>Stored in object storage, then indexed in the background</span>
+          </label>
+        ) : (
+          <div className="upload-target muted">
+            <Upload size={28} />
+            <strong>{uploadMode === "doi" ? "DOI ingestion queued" : "URL ingestion queued"}</strong>
+            <span>This control is active; resolver wiring comes after the PDF pipeline is stable.</span>
+          </div>
+        )}
+        {uploadStatus && <p className="upload-status">{uploadStatus}</p>}
         <label className="mt-4 block">
           <span className="mb-2 block text-sm uppercase tracking-[0.16em] text-stone-500">DOI or URL</span>
-          <input className="modal-input" placeholder="10.48550/arXiv.1706.03762" />
+          <input
+            className="modal-input"
+            disabled={uploadMode === "pdf"}
+            placeholder="10.48550/arXiv.1706.03762"
+          />
         </label>
         <button
           className="mt-4 inline-flex w-full items-center justify-center gap-2 bg-violet-500 px-4 py-3 text-lg font-medium text-[#171713]"
-          onClick={onClose}
+          onClick={uploadMode === "pdf" ? onClose : undefined}
           type="button"
         >
-          Queue ingestion
+          {uploadMode === "pdf" ? "Close" : "Queue resolver"}
           <ArrowUpRight size={18} />
         </button>
       </div>

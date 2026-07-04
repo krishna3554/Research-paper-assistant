@@ -79,6 +79,11 @@ input:focus-visible {
   color: #f5f5f4;
 }
 
+.icon-button.active {
+  border-color: #a79bff;
+  color: #a79bff;
+}
+
 .topbar-panel-toggle {
   display: none;
 }
@@ -93,6 +98,14 @@ input:focus-visible {
   display: grid;
   grid-template-columns: 280px minmax(310px, 360px) minmax(0, 1fr);
   border-radius: 8px;
+}
+
+.workspace-grid.sidebar-collapsed {
+  grid-template-columns: minmax(310px, 380px) minmax(0, 1fr);
+}
+
+.workspace-grid.sidebar-collapsed .workspace-sidebar {
+  display: none;
 }
 
 .eyebrow {
@@ -423,12 +436,16 @@ input:focus-visible {
 }
 
 .mini-toggle {
-  display: block;
+  display: grid;
   height: 42px;
   width: 36px;
+  place-items: center;
   border: 1px solid rgba(168, 162, 158, 0.32);
   background: #2a2a25;
   border-radius: 16px;
+  color: #c7c2bb;
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 
 .dropzone {
@@ -586,7 +603,7 @@ input:focus-visible {
 
 .tab-row {
   display: flex;
-  min-height: 72px;
+  min-height: 58px;
   overflow-x: auto;
   border-bottom: 1px solid rgba(168, 162, 158, 0.32);
   background: #2a2a25;
@@ -600,7 +617,7 @@ input:focus-visible {
   gap: 0.45rem;
   border-bottom: 3px solid transparent;
   color: #c7c2bb;
-  font-size: 1.25rem;
+  font-size: 1.05rem;
 }
 
 .tab-button.active {
@@ -608,11 +625,15 @@ input:focus-visible {
   color: #8170ff;
 }
 
+.qa-panel {
+  max-height: clamp(280px, 46vh, 520px);
+}
+
 .message {
   border-radius: 8px;
-  padding: 1.25rem;
-  font-size: 1.35rem;
-  line-height: 1.42;
+  padding: 0.85rem 1rem;
+  font-size: 1.02rem;
+  line-height: 1.35;
 }
 
 .message.assistant {
@@ -627,7 +648,7 @@ input:focus-visible {
 }
 
 .source-row {
-  margin-top: 0.8rem;
+  margin-top: 0.55rem;
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
@@ -635,8 +656,40 @@ input:focus-visible {
 
 .source-row a {
   color: #8170ff;
-  font-size: 1rem;
+  font-size: 0.88rem;
   text-decoration: none;
+}
+
+.qa-empty-chat {
+  display: grid;
+  min-height: clamp(96px, 16vh, 150px);
+  place-items: center;
+  align-content: center;
+  color: #f5f1e8;
+  text-align: center;
+}
+
+.qa-empty-logo {
+  display: grid;
+  height: 44px;
+  width: 44px;
+  place-items: center;
+  border: 1px solid rgba(245, 241, 232, 0.18);
+  background: #2a2a25;
+  color: #8b7cff;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
+}
+
+.qa-empty-chat h2 {
+  margin-top: 0.45rem;
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.qa-empty-chat p {
+  margin-top: 0.12rem;
+  color: #aaa49a;
+  font-size: 0.82rem;
 }
 
 .evidence-box,
@@ -645,7 +698,7 @@ input:focus-visible {
 .graph-stage {
   border: 1px solid rgba(168, 162, 158, 0.34);
   background: #252520;
-  padding: 1.4rem;
+  padding: 1rem;
 }
 
 .claim-row {
@@ -653,8 +706,8 @@ input:focus-visible {
   grid-template-columns: 12px 1fr auto;
   align-items: center;
   gap: 0.9rem;
-  padding: 0.9rem 0;
-  font-size: 1.2rem;
+  padding: 0.65rem 0;
+  font-size: 1rem;
   line-height: 1.2;
 }
 
@@ -678,12 +731,18 @@ input:focus-visible {
 
 .action-button {
   display: inline-flex;
-  min-height: 58px;
+  min-height: 44px;
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
   border: 1px solid rgba(168, 162, 158, 0.32);
   color: #cbc7bf;
+}
+
+.chat-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
 }
 
 .chat-input {
@@ -692,7 +751,7 @@ input:focus-visible {
   gap: 0.75rem;
   border: 1px solid rgba(168, 162, 158, 0.22);
   background: #20201c;
-  padding: 0.7rem;
+  padding: 0.5rem;
 }
 
 .chat-input input,
@@ -706,13 +765,13 @@ input:focus-visible {
 
 .chat-input input {
   min-width: 0;
-  padding: 0.75rem 1.1rem;
-  font-size: 1.55rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 1.1rem;
 }
 
 .chat-input button {
   display: grid;
-  width: 58px;
+  width: 44px;
   place-items: center;
   border: 1px solid rgba(168, 162, 158, 0.35);
 }
@@ -885,11 +944,17 @@ input:focus-visible {
 
 .upload-target {
   display: grid;
-  min-height: 190px;
+  min-height: 150px;
   place-items: center;
   border: 1px dashed rgba(168, 162, 158, 0.52);
   padding: 1.2rem;
   text-align: center;
+  cursor: pointer;
+}
+
+.upload-target.muted {
+  cursor: default;
+  opacity: 0.76;
 }
 
 .upload-target strong,
@@ -898,11 +963,37 @@ input:focus-visible {
 }
 
 .upload-target strong {
-  font-size: 1.6rem;
+  font-size: 1.35rem;
 }
 
 .upload-target span {
   color: #b9b4ad;
+}
+
+.upload-mode-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.upload-mode {
+  border: 1px solid rgba(168, 162, 158, 0.34);
+  padding: 0.5rem;
+  color: #c7c2bb;
+  font-size: 0.82rem;
+}
+
+.upload-mode.active {
+  border-color: #a79bff;
+  background: #f0eeff;
+  color: #38307f;
+}
+
+.upload-status {
+  margin-top: 0.75rem;
+  color: #d8d3cb;
+  font-size: 0.95rem;
 }
 
 .modal-input {
@@ -1298,11 +1389,35 @@ input:focus-visible {
 }
 
 .workspace-page .action-button {
-  min-height: 50px;
+  min-height: 36px;
+  padding: 0.35rem 0.55rem;
 }
 
 .workspace-page .chat-input input {
-  font-size: 1.1rem;
+  padding: 0.48rem 0.8rem;
+  font-size: 0.96rem;
+}
+
+.workspace-page .chat-input {
+  gap: 0.45rem;
+  padding: 0.42rem;
+}
+
+.workspace-page .chat-input button {
+  width: 42px;
+}
+
+.workspace-page .chat-footer {
+  padding: 0.55rem 0.7rem !important;
+}
+
+.workspace-page .insight-strip {
+  font-size: 0.86rem;
+  line-height: 1.25;
+}
+
+.workspace-page .insight-strip .text-sm {
+  font-size: 0.78rem;
 }
 
 .workspace-page .reading-surface h3 {
@@ -1486,4 +1601,37 @@ input:focus-visible {
 .workspace-page .conflict-card,
 .workspace-page .chat-input {
   border-color: rgba(168, 162, 158, 0.34) !important;
+}
+
+@media (max-height: 760px) {
+  .workspace-page .intelligence-body {
+    padding: 0.75rem !important;
+  }
+
+  .workspace-page .insight-strip {
+    margin-bottom: 0.5rem !important;
+    padding: 0.45rem 0.6rem !important;
+  }
+
+  .workspace-page .qa-empty-chat {
+    min-height: 88px;
+  }
+
+  .workspace-page .qa-empty-logo {
+    height: 38px;
+    width: 38px;
+  }
+
+  .workspace-page .qa-empty-chat h2 {
+    margin-top: 0.32rem;
+    font-size: 0.95rem;
+  }
+
+  .workspace-page .qa-empty-chat p {
+    font-size: 0.76rem;
+  }
+
+  .workspace-page .chat-footer .grid {
+    display: none;
+  }
 }

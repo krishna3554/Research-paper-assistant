@@ -14,7 +14,7 @@ settings = get_settings()
 
 TEXT_DIR = BASE_DIR / "data" / "texts"
 PDF_DIR = BASE_DIR / "data" / "pdfs"
-CHROMA_DIR = Path(settings.chroma_dir)
+CHROMA_DIR = BASE_DIR / settings.chroma_dir
 EMBEDDING_MODEL = settings.embedding_model
 
 def load_text_documents():
@@ -106,19 +106,19 @@ def ingest():
 
 def build_llm():
 
-    provider = os.getenv("LLM_PROVIDER", "lmstudio").lower()
+    provider = settings.llm_provider.lower()
 
     if provider == "lmstudio":
         return ChatOpenAI(
-            base_url=settings.lmstudio_base_url,
-            api_key=settings.lmstudio_api_key,
-            model=settings.lmstudio_model_name,
+            base_url=settings.lm_studio_url,
+            api_key=settings.lm_studio_api_key,
+            model=settings.lm_studio_model_name,
             temperature=0.2,
             timeout=120,
         )
 
     if provider == "openrouter":
-        api_key = os.getenv("OPENROUTER_API_KEY")
+        api_key = settings.openrouter_api_key
 
         if not api_key:
             raise ValueError(
