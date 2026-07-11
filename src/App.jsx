@@ -20,7 +20,17 @@ import {
   X
 } from "lucide-react";
 import { answers, claims, collections, conflicts, papers, reviewSections } from "./data/researchData";
-import { getPapers, uploadPaper } from "./lib/api";
+import {
+  askQuestion,
+  getComparison,
+  getConflicts,
+  getGraph,
+  getPaperStatus,
+  getPapers,
+  getReview,
+  ingestSourceUrl,
+  uploadPaper
+} from "./lib/api";
 
 const tabs = [
   { id: "qa", label: "Q&A", icon: MessageSquareText },
@@ -47,12 +57,26 @@ function App() {
   const [uploadMode, setUploadMode] = useState("pdf");
   const [uploadStatus, setUploadStatus] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [sourceUrl, setSourceUrl] = useState("");
   const [apiPapers, setApiPapers] = useState([]);
   const [apiError, setApiError] = useState("");
   const [isLoadingPapers, setIsLoadingPapers] = useState(false);
   const [messages, setMessages] = useState(answers);
+  const [isAsking, setIsAsking] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [insight, setInsight] = useState("Corpus ready: 12 indexed papers, 3 conflicts, 4 methodology clusters.");
+  const [panelData, setPanelData] = useState({
+    review: null,
+    compare: null,
+    conflicts: null,
+    graph: null
+  });
+  const [panelStatus, setPanelStatus] = useState({
+    review: "",
+    compare: "",
+    conflicts: "",
+    graph: ""
+  });
 
   async function refreshPapers() {
     setIsLoadingPapers(true);
@@ -90,6 +114,63 @@ function App() {
     } finally {
       setIsUploading(false);
       event.target.value = "";
+    }
+  }
+
+  async function handleSourceUrlSubmit(event) {
+    event.preventDefault();
+    const cleanUrl = sourceUrl.trim();
+
+    if (!cleanUrl) {
+      setUploadStatus("Enter a direct PDF URL or arXiv URL.");
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadStatus("Resolving source URL...");
+
+    try {
+      const result = await ingestSourceUrl(cleanUrl);
+      setUploadStatus(`Added ${result.filename}. Indexing started.`);
+      setSourceUrl("");
+      await refreshPapers();
+    } catch (error) {
+      setUploadStatus(error.message);
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  async function loadPanel(kind, paperId = activePaper?.id) {
+    const backendPaperId = paperId?.startsWith("paper_") ? paperId : null;
+
+    setPanelStatus((current) => ({
+      ...current,
+      [kind]: "loading"
+    }));
+
+    try {
+      const loaders = {
+        review: () => getReview({ paperId: backendPaperId }),
+        compare: () => getComparison({ paperId: backendPaperId }),
+        conflicts: () => getConflicts({ paperId: backendPaperId }),
+        graph: () => getGraph(backendPaperId)
+      };
+      const data = await loaders[kind]();
+
+      setPanelData((current) => ({
+        ...current,
+        [kind]: data
+      }));
+      setPanelStatus((current) => ({
+        ...current,
+        [kind]: ""
+      }));
+    } catch (error) {
+      setPanelStatus((current) => ({
+        ...current,
+        [kind]: error.message
+      }));
     }
   }
 
@@ -133,50 +214,81 @@ function App() {
   const activeCollectionLabel =
     collections.find((collection) => collection.id === activeCollection)?.name ?? "Research Workspace";
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     const cleanPrompt = prompt.trim();
     if (!cleanPrompt) return;
 
     const selected = activePaper;
+    const questionId = `q-${Date.now()}`;
+    const answerId = `a-${Date.now()}`;
+
     setMessages((current) => [
       ...current,
-      { id: `q-${Date.now()}`, role: "user", body: cleanPrompt, sources: [] },
-      {
-        id: `a-${Date.now()}`,
-        role: "assistant",
-        body: `${selected.authors} supports this with a methodology trail: ${selected.methodology} The answer is grounded against ${selected.citations} extracted citation links and the active ${activeCollectionLabel} corpus.`,
-        sources: [
-          {
-            paperId: selected.id,
-            label: `${selected.authors}, ${selected.year}`,
-            section: "Methodology",
-            page: "p. 5"
-          }
-        ]
-      }
+      { id: questionId, role: "user", body: cleanPrompt, sources: [] }
     ]);
     setPrompt("");
-    setInsight(`Generated a cited answer from ${selected.authors} with ${Math.round(selected.confidence * 100)}% retrieval confidence.`);
+    setIsAsking(true);
+
+    try {
+      const response = await askQuestion({
+        question: cleanPrompt,
+        paperId: selected?.id?.startsWith("paper_") ? selected.id : null
+      });
+
+      setMessages((current) => [
+        ...current,
+        {
+          id: answerId,
+          role: "assistant",
+          body: response.answer,
+          sources: response.sources.map((source, index) => ({
+            paperId: selected?.id ?? `source-${index}`,
+            label: source.source,
+            section: `Source ${index + 1}`,
+            page: source.page ? `p. ${source.page}` : "indexed chunk",
+            content: response.retrieved_chunks[index]?.content
+          }))
+        }
+      ]);
+      setInsight(`Generated a cited answer from ${response.sources.length} retrieved source chunk(s).`);
+    } catch (error) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: answerId,
+          role: "assistant",
+          body: error.message,
+          sources: []
+        }
+      ]);
+      setInsight("The RAG answer failed. Check that the selected paper is indexed and LM Studio is running.");
+    } finally {
+      setIsAsking(false);
+    }
   }
 
   function runAction(kind) {
     if (kind === "compare") {
       setActiveTab("compare");
       setInsight("Comparison matrix loaded: architecture, objective, data, evaluation, and limitations.");
+      loadPanel("compare");
     }
     if (kind === "conflicts") {
       setActiveTab("compare");
       setActiveFilter("Conflicts");
       setInsight("Conflict detector surfaced 3 claim pairs with source-level evidence.");
+      loadPanel("conflicts");
     }
     if (kind === "review") {
       setActiveTab("review");
       setInsight("Draft review refreshed with chronological and thematic synthesis sections.");
+      loadPanel("review");
     }
     if (kind === "graph") {
       setActiveTab("graph");
       setInsight("Graph view focused on citation, method, and conflict links for the active source.");
+      loadPanel("graph");
     }
     if (kind === "collection") {
       setActiveCollection("all");
@@ -202,6 +314,40 @@ function App() {
       setActivePaperId(visiblePapers[0]?.id ?? "");
     }
   }, [activePaperId, visiblePapers]);
+
+  useEffect(() => {
+    const pending = apiPapers.filter((paper) => ["uploaded", "processing"].includes(paper.status));
+
+    if (pending.length === 0) return undefined;
+
+    const timer = window.setInterval(async () => {
+      try {
+        const statuses = await Promise.all(
+          pending.map((paper) => getPaperStatus(paper.id))
+        );
+        const changed = statuses.some((status) => {
+          const existing = apiPapers.find((paper) => paper.id === status.paper_id);
+          return existing && existing.status !== status.status;
+        });
+
+        if (changed) {
+          await refreshPapers();
+        }
+      } catch (error) {
+        setApiError(error.message);
+      }
+    }, 3500);
+
+    return () => window.clearInterval(timer);
+  }, [apiPapers]);
+
+  useEffect(() => {
+    if (!activePaper?.id?.startsWith("paper_")) return;
+
+    if (activeTab === "review") loadPanel("review", activePaper.id);
+    if (activeTab === "compare") loadPanel("compare", activePaper.id);
+    if (activeTab === "graph") loadPanel("graph", activePaper.id);
+  }, [activePaperId, activeTab]);
 
   function navigate(nextView) {
     const nextHash = nextView === "workspace" ? "#/workspace" : "#/";
@@ -232,6 +378,8 @@ function App() {
       isUploadOpen={isUploadOpen}
       isUploading={isUploading}
       messages={messages}
+      panelData={panelData}
+      panelStatus={panelStatus}
       prompt={prompt}
       query={query}
       setActiveCollection={setActiveCollection}
@@ -241,14 +389,18 @@ function App() {
       setPrompt={setPrompt}
       setQuery={setQuery}
       setSidebarOpen={setSidebarOpen}
+      setSourceUrl={setSourceUrl}
       setUploadOpen={setUploadOpen}
       setUploadMode={setUploadMode}
+      sourceUrl={sourceUrl}
       uploadMode={uploadMode}
       uploadStatus={uploadStatus}
       onAction={runAction}
       onHome={() => navigate("landing")}
+      onSourceUrlSubmit={handleSourceUrlSubmit}
       onUploadFile={handleUploadFile}
       onSubmit={handleSubmit}
+      isAsking={isAsking}
     />
   );
 }
@@ -257,12 +409,12 @@ function LandingPage({ onEnterApp }) {
   return (
     <main className="landing-page min-h-screen bg-[#ebe8dd] text-[#1e1e19]">
       <header className="landing-nav">
-        <a className="landing-brand" href="#" aria-label="PaperMind home">
+        <button className="landing-brand" type="button" aria-label="PaperMind home">
           <span>
             <BrainCircuit size={22} strokeWidth={2.4} />
           </span>
           PaperMind
-        </a>
+        </button>
         <nav aria-label="Product sections">
           <a href="#workflow">Workflow</a>
           <a href="#evidence">Evidence</a>
@@ -345,7 +497,7 @@ function ProductPreview() {
         <p>
           Transformer removes recurrence with multi-head attention; BERT keeps the encoder stack and adds masked bidirectional pre-training.
         </p>
-        <a href="#">Vaswani et al., 2017 . Devlin et al., 2018</a>
+        <span>Vaswani et al., 2017 . Devlin et al., 2018</span>
       </div>
       <div className="preview-claims">
         <span>3 conflicts</span>
@@ -379,7 +531,10 @@ function WorkspacePage({
   isSidebarOpen,
   isUploadOpen,
   isUploading,
+  isAsking,
   messages,
+  panelData,
+  panelStatus,
   prompt,
   query,
   setActiveCollection,
@@ -389,12 +544,15 @@ function WorkspacePage({
   setPrompt,
   setQuery,
   setSidebarOpen,
+  setSourceUrl,
   setUploadOpen,
   setUploadMode,
+  sourceUrl,
   uploadMode,
   uploadStatus,
   onAction,
   onHome,
+  onSourceUrlSubmit,
   onUploadFile,
   onSubmit
 }) {
@@ -435,8 +593,11 @@ function WorkspacePage({
           <IntelligencePanel
             activePaper={activePaper}
             activeTab={activeTab}
+            isAsking={isAsking}
             setActiveTab={setActiveTab}
             messages={messages}
+            panelData={panelData}
+            panelStatus={panelStatus}
             prompt={prompt}
             setPrompt={setPrompt}
             onSubmit={onSubmit}
@@ -451,8 +612,11 @@ function WorkspacePage({
           isUploading={isUploading}
           uploadMode={uploadMode}
           uploadStatus={uploadStatus}
+          sourceUrl={sourceUrl}
+          setSourceUrl={setSourceUrl}
           setUploadMode={setUploadMode}
           onClose={() => setUploadOpen(false)}
+          onSourceUrlSubmit={onSourceUrlSubmit}
           onUploadFile={onUploadFile}
         />
       )}
@@ -605,7 +769,7 @@ function PaperRail({
         <button className="dropzone mt-5" onClick={() => openUpload("pdf")} type="button">
           <Upload size={23} />
           <span>Upload PDFs or add by DOI</span>
-          <small>PDF works now; DOI and URL are queued states</small>
+          <small>PDF upload, direct PDF URL, and arXiv URL supported</small>
         </button>
 
         <div className="mt-4 grid grid-cols-3 gap-2">
@@ -676,8 +840,11 @@ function Stat({ value, label }) {
 function IntelligencePanel({
   activePaper,
   activeTab,
+  isAsking,
   setActiveTab,
   messages,
+  panelData,
+  panelStatus,
   prompt,
   setPrompt,
   onSubmit,
@@ -713,9 +880,28 @@ function IntelligencePanel({
         </div>
 
         {activeTab === "qa" && <QaPanel messages={messages} activePaper={activePaper} />}
-        {activeTab === "review" && <ReviewPanel activePaper={activePaper} />}
-        {activeTab === "compare" && <ComparePanel activePaper={activePaper} />}
-        {activeTab === "graph" && <GraphPanel activePaper={activePaper} />}
+        {activeTab === "review" && (
+          <ReviewPanel
+            activePaper={activePaper}
+            review={panelData.review}
+            status={panelStatus.review}
+          />
+        )}
+        {activeTab === "compare" && (
+          <ComparePanel
+            activePaper={activePaper}
+            comparison={panelData.compare}
+            conflictsData={panelData.conflicts}
+            status={panelStatus.compare || panelStatus.conflicts}
+          />
+        )}
+        {activeTab === "graph" && (
+          <GraphPanel
+            activePaper={activePaper}
+            graph={panelData.graph}
+            status={panelStatus.graph}
+          />
+        )}
       </div>
 
       <div className="border-t border-stone-700/80 bg-[#252520] p-4">
@@ -741,9 +927,10 @@ function IntelligencePanel({
           <input
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            placeholder="Ask anything about your papers..."
+            disabled={isAsking}
+            placeholder={isAsking ? "Asking the corpus..." : "Ask anything about your papers..."}
           />
-          <button aria-label="Send question" type="submit">
+          <button aria-label="Send question" disabled={isAsking} type="submit">
             <Send size={19} />
           </button>
         </form>
@@ -763,9 +950,9 @@ function QaPanel({ messages, activePaper }) {
           {message.sources.length > 0 && (
             <div className="source-row">
               {message.sources.map((source) => (
-                <a href="#" key={`${message.id}-${source.paperId}`}>
+                <span key={`${message.id}-${source.paperId}`} title={source.content || source.label}>
                   {source.label} . {source.section} . {source.page}
-                </a>
+                </span>
               ))}
             </div>
           )}
@@ -802,16 +989,33 @@ function RelatedClaims({ activePaper }) {
   );
 }
 
-function ReviewPanel({ activePaper }) {
+function PanelNotice({ status }) {
+  if (!status) return null;
+
+  return (
+    <div className="mb-4 border border-stone-700/80 bg-[#20201c] p-3 text-stone-300">
+      {status === "loading" ? "Loading backend evidence..." : status}
+    </div>
+  );
+}
+
+function ReviewPanel({ activePaper, review, status }) {
+  const sections = review?.sections ?? reviewSections.map((section) => ({
+    ...section,
+    source_count: 0
+  }));
+
   return (
     <div className="mx-auto grid max-w-5xl gap-4 lg:grid-cols-[1fr_0.9fr]">
       <section className="reading-surface">
+        <PanelNotice status={status} />
         <p className="eyebrow">Draft literature review</p>
         <h3>{activePaper.type} methods in context</h3>
-        {reviewSections.map((section) => (
+        {sections.map((section) => (
           <div className="review-block" key={section.id}>
             <h4>{section.title}</h4>
             <p>{section.text}</p>
+            <small>{section.source_count} backend source chunk(s)</small>
           </div>
         ))}
       </section>
@@ -834,27 +1038,38 @@ function ReviewPanel({ activePaper }) {
   );
 }
 
-function ComparePanel({ activePaper }) {
-  const comparison = papers.slice(0, 4);
+function ComparePanel({ activePaper, comparison, conflictsData, status }) {
+  const comparisonRows = comparison?.rows ?? papers.slice(0, 4).map((paper) => ({
+    paper_id: paper.id,
+    title: paper.title,
+    status: paper.status,
+    chunks: paper.citations,
+    methodology: paper.title,
+    evidence: paper.methodology,
+    risk: paper.status === "conflict" ? "Conflicting scaling claim" : "Grounded"
+  }));
+  const conflictRows = conflictsData?.conflicts ?? conflicts;
+
   return (
     <div className="mx-auto max-w-6xl">
+      <PanelNotice status={status} />
       <div className="compare-grid">
         <div className="compare-head">Paper</div>
         <div className="compare-head">Method</div>
         <div className="compare-head">Key evidence</div>
         <div className="compare-head">Risk</div>
-        {comparison.map((paper) => (
-          <div className={classNames("compare-row", paper.id === activePaper.id && "selected")} key={paper.id}>
-            <strong>{paper.authors}, {paper.year}</strong>
-            <span>{paper.title}</span>
-            <p>{paper.methodology}</p>
-            <small>{paper.status === "conflict" ? "Conflicting scaling claim" : "Grounded"}</small>
+        {comparisonRows.map((paper) => (
+          <div className={classNames("compare-row", paper.paper_id === activePaper.id && "selected")} key={paper.paper_id}>
+            <strong>{paper.title}</strong>
+            <span>{paper.status} . {paper.chunks} chunks</span>
+            <p>{paper.evidence}</p>
+            <small>{paper.risk}</small>
           </div>
         ))}
       </div>
 
       <div className="mt-5 grid gap-3 md:grid-cols-3">
-        {conflicts.map((conflict) => (
+        {conflictRows.map((conflict) => (
           <article className="conflict-card" key={conflict.id}>
             <span>{conflict.severity}</span>
             <h4>{conflict.title}</h4>
@@ -866,10 +1081,19 @@ function ComparePanel({ activePaper }) {
   );
 }
 
-function GraphPanel({ activePaper }) {
+function GraphPanel({ activePaper, graph, status }) {
+  const graphNodes = graph?.nodes ?? [
+    { id: "active", label: activePaper.type, kind: "paper" },
+    { id: "attention", label: "Attention heads", kind: "concept" },
+    { id: "methods", label: "Methodology", kind: "concept" },
+    { id: "conflicts", label: "Conflicts", kind: "concept" },
+    { id: "citations", label: "Citations", kind: "concept" }
+  ];
+
   return (
     <div className="mx-auto grid max-w-5xl gap-5 lg:grid-cols-[1.2fr_0.8fr]">
       <div className="graph-stage">
+        <PanelNotice status={status} />
         <span className="node primary">{activePaper.type}</span>
         <span className="node top">Attention heads</span>
         <span className="node left">Methodology</span>
@@ -886,17 +1110,35 @@ function GraphPanel({ activePaper }) {
         <p className="eyebrow">Graph summary</p>
         <h3>{activePaper.title}</h3>
         <p>
-          Concept edges connect methodology sections, cited claims, and conflict candidates. This preview keeps graph data local until the backend citation graph lands.
+          Backend graph loaded {graphNodes.length} node(s), connecting papers, statuses, pages, and source chunks.
         </p>
+        <div className="mt-4 divide-y divide-stone-700/80">
+          {graphNodes.slice(0, 8).map((node) => (
+            <div className="py-2" key={node.id}>
+              <strong>{node.label}</strong>
+              <span className="ml-2 text-stone-500">{node.kind}</span>
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   );
 }
 
-function UploadModal({ isUploading, uploadMode, uploadStatus, setUploadMode, onClose, onUploadFile }) {
+function UploadModal({
+  isUploading,
+  uploadMode,
+  uploadStatus,
+  sourceUrl,
+  setSourceUrl,
+  setUploadMode,
+  onClose,
+  onSourceUrlSubmit,
+  onUploadFile
+}) {
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Upload papers">
-      <div className="modal-panel">
+      <form className="modal-panel" onSubmit={onSourceUrlSubmit}>
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <p className="eyebrow">Add sources</p>
@@ -935,8 +1177,8 @@ function UploadModal({ isUploading, uploadMode, uploadStatus, setUploadMode, onC
         ) : (
           <div className="upload-target muted">
             <Upload size={28} />
-            <strong>{uploadMode === "doi" ? "DOI ingestion queued" : "URL ingestion queued"}</strong>
-            <span>This control is active; resolver wiring comes after the PDF pipeline is stable.</span>
+            <strong>{uploadMode === "doi" ? "DOI / arXiv resolver" : "URL resolver"}</strong>
+            <span>Direct PDF URLs and arXiv links are supported; publisher DOI pages return a clear backend message.</span>
           </div>
         )}
         {uploadStatus && <p className="upload-status">{uploadStatus}</p>}
@@ -945,18 +1187,21 @@ function UploadModal({ isUploading, uploadMode, uploadStatus, setUploadMode, onC
           <input
             className="modal-input"
             disabled={uploadMode === "pdf"}
+            value={sourceUrl}
+            onChange={(event) => setSourceUrl(event.target.value)}
             placeholder="10.48550/arXiv.1706.03762"
           />
         </label>
         <button
           className="mt-4 inline-flex w-full items-center justify-center gap-2 bg-violet-500 px-4 py-3 text-lg font-medium text-[#171713]"
-          onClick={uploadMode === "pdf" ? onClose : undefined}
-          type="button"
+          onClick={uploadMode === "pdf" ? onClose : () => {}}
+          disabled={isUploading}
+          type={uploadMode === "pdf" ? "button" : "submit"}
         >
           {uploadMode === "pdf" ? "Close" : "Queue resolver"}
           <ArrowUpRight size={18} />
         </button>
-      </div>
+      </form>
     </div>
   );
 }

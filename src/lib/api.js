@@ -41,6 +41,16 @@ export function askQuestion({ question, paperId }) {
   });
 }
 
+export function ingestSourceUrl(url) {
+  return request("/sources/url", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ url })
+  });
+}
+
 export function uploadPaper(file) {
   const formData = new FormData();
   formData.append("file", file);
@@ -48,5 +58,35 @@ export function uploadPaper(file) {
   return request("/upload", {
     method: "POST",
     body: formData
+  });
+}
+
+export function getGraph(paperId) {
+  const params = paperId ? `?paper_id=${encodeURIComponent(paperId)}` : "";
+  return request(`/graph${params}`);
+}
+
+export function getReview({ paperId }) {
+  return workspaceRequest("/review", { paperId });
+}
+
+export function getComparison({ paperId }) {
+  return workspaceRequest("/compare", { paperId });
+}
+
+export function getConflicts({ paperId }) {
+  return workspaceRequest("/conflicts", { paperId });
+}
+
+function workspaceRequest(path, { paperId, paperIds } = {}) {
+  return request(path, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      paper_id: paperId || null,
+      paper_ids: paperIds || null
+    })
   });
 }
