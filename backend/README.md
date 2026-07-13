@@ -5,7 +5,7 @@ FastAPI backend for PaperMind, a research paper assistant with citation-backed R
 ## Stack
 
 - FastAPI for HTTP APIs
-- PostgreSQL with pgvector image for structured metadata today and future vector support
+- PostgreSQL with the `pgvector/pgvector:pg16` image for structured metadata and future vector support
 - MinIO for local S3-compatible object storage
 - Chroma for the current local vector store
 - LangChain for retrieval and LLM orchestration
@@ -20,13 +20,13 @@ Start PostgreSQL and MinIO from the project root:
 docker compose up -d
 ```
 
-PostgreSQL runs at:
+PostgreSQL:
 
 ```text
 localhost:5432
 ```
 
-MinIO runs at:
+MinIO:
 
 ```text
 API: http://localhost:9000
@@ -83,6 +83,12 @@ S3_SECRET_ACCESS_KEY=your-aws-secret-key
 S3_REGION=ap-south-1
 ```
 
+The frontend API base URL can be configured from the project root:
+
+```env
+VITE_API_BASE_URL=http://127.0.0.1:8000
+```
+
 ## Install
 
 ```bash
@@ -97,6 +103,8 @@ pip install -r requirements.txt
 Apply migrations:
 
 ```bash
+cd backend
+source .venv/bin/activate
 alembic upgrade head
 ```
 
@@ -106,7 +114,7 @@ Check the active migration:
 alembic current
 ```
 
-The database should include:
+Expected tables:
 
 ```text
 alembic_version
@@ -118,7 +126,7 @@ document_chunks
 
 ## Run API
 
-Start the LM Studio local server first. It should expose an OpenAI-compatible endpoint at:
+Start LM Studio first and enable its local OpenAI-compatible server at:
 
 ```text
 http://127.0.0.1:1234/v1
@@ -132,22 +140,46 @@ source .venv/bin/activate
 uvicorn api:app --reload
 ```
 
-Open the API docs:
+Open:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-## Main Endpoints
+## Endpoint Summary
+
+Core:
 
 ```text
-GET /health
+GET  /health
+GET  /papers
+GET  /papers/{paper_id}/status
 POST /upload
-GET /papers
-GET /papers/{paper_id}/status
+POST /sources/url
 POST /ask
 POST /ingest
 ```
+
+Workspace intelligence:
+
+```text
+POST /review
+POST /compare
+POST /conflicts
+GET  /graph?paper_id=paper_xxx
+```
+
+`POST /upload` accepts a PDF file and starts background indexing.
+
+`POST /sources/url` accepts direct PDF URLs and arXiv URLs:
+
+```json
+{
+  "url": "https://arxiv.org/abs/1706.03762"
+}
+```
+
+DOI and publisher pages are not fully resolved yet unless they are direct PDF URLs.
 
 `POST /ask` supports corpus-wide Q&A and paper-scoped Q&A:
 
@@ -164,10 +196,21 @@ POST /ingest
 }
 ```
 
-## RAG Flow
+Workspace endpoints accept this shared request shape:
+
+```json
+{
+  "paper_id": "paper_xxx",
+  "paper_ids": null
+}
+```
+
+`paper_id` scopes a panel to one paper. If omitted, the endpoint uses recent papers.
+
+## Current RAG Flow
 
 ```text
-Upload PDF
+Upload PDF or submit arXiv/direct PDF URL
   -> store original PDF in MinIO/S3-compatible storage
   -> create paper row in PostgreSQL
   -> start background ingestion
@@ -180,9 +223,27 @@ Upload PDF
   -> answer questions with retrieved citations
 ```
 
+## Workspace Feature Flow
+
+The frontend workspace now uses backend-backed data for:
+
+```text
+Library list       -> GET /papers
+Upload             -> POST /upload
+arXiv/PDF URL      -> POST /sources/url
+Indexing status    -> GET /papers/{paper_id}/status
+Chat Q&A           -> POST /ask
+Review panel       -> POST /review
+Compare panel      -> POST /compare
+Conflict panel     -> POST /conflicts
+Graph panel        -> GET /graph
+```
+
+Review, compare, conflicts, and graph currently compute lightweight structured outputs from PostgreSQL chunk metadata and indexed text. They are backend-backed, but not yet persisted as separate report tables.
+
 ## Storage Model
 
-PostgreSQL stores metadata, not the original PDF bytes:
+PostgreSQL stores metadata and chunk audit records:
 
 ```text
 papers.storage_provider
@@ -190,16 +251,47 @@ papers.storage_key
 papers.file_size
 papers.mime_type
 papers.status
+document_chunks.content
+document_chunks.chroma_id
 ```
 
-Object storage stores the original PDF:
+Object storage stores original PDFs:
 
 ```text
 MinIO locally now
 AWS S3 later
 ```
 
-Chroma stores vector embeddings for semantic retrieval. The chunk rows in PostgreSQL keep the text auditable and link each chunk to a paper.
+Chroma stores vector embeddings for semantic retrieval.
+
+## Verification
+
+Backend syntax and app import:
+
+```bash
+cd ..
+backend/.venv/bin/python -m py_compile backend/api.py backend/config.py backend/db.py backend/storage.py backend/rag_text_demo.py backend/ingestion.py backend/models.py
+backend/.venv/bin/python -c "import sys; sys.path.insert(0, 'backend'); import api; print(len(api.app.routes))"
+```
+
+Frontend build:
+
+```bash
+npm run build
+```
+
+Manual smoke test:
+
+```text
+1. docker compose up -d
+2. Start LM Studio local server
+3. cd backend && source .venv/bin/activate && uvicorn api:app --reload
+4. Open http://127.0.0.1:8000/docs
+5. Upload a PDF or submit an arXiv URL
+6. Poll paper status until indexed
+7. Test /ask, /review, /compare, /conflicts, and /graph
+8. Open the frontend workspace and confirm all panels load backend data
+```
 
 ## Do Not Commit
 
@@ -211,4 +303,6 @@ backend/.venv
 backend/chroma_db
 backend/tmp
 __pycache__
+node_modules
+dist
 ```
