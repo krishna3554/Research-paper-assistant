@@ -266,10 +266,9 @@ Chroma stores vector embeddings for semantic retrieval.
 
 ## Verification
 
-Backend syntax and app import:
+Backend syntax and app import from the project root:
 
 ```bash
-cd ..
 backend/.venv/bin/python -m py_compile backend/api.py backend/config.py backend/db.py backend/storage.py backend/rag_text_demo.py backend/ingestion.py backend/models.py
 backend/.venv/bin/python -c "import sys; sys.path.insert(0, 'backend'); import api; print(len(api.app.routes))"
 ```
