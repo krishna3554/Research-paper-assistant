@@ -19,7 +19,7 @@ import {
   Upload,
   X
 } from "lucide-react";
-import { answers, claims, collections, conflicts, papers, reviewSections } from "./data/researchData";
+import { answers, claims, collections as seedCollections, conflicts, papers, reviewSections } from "./data/researchData";
 import {
   askQuestion,
   getComparison,
@@ -40,20 +40,40 @@ const tabs = [
 ];
 
 const filters = ["All", "Methodology", "Scaling", "Retrieval", "Conflicts"];
+const COLLECTIONS_STORAGE_KEY = "papermind.collections";
+const PAPER_COLLECTIONS_STORAGE_KEY = "papermind.paperCollections";
 
 function classNames(...values) {
   return values.filter(Boolean).join(" ");
 }
 
+function slugify(value) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function readJsonStorage(key, fallback) {
+  try {
+    return JSON.parse(window.localStorage.getItem(key)) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function App() {
   const [view, setView] = useState(() => (window.location.hash === "#/workspace" ? "workspace" : "landing"));
   const [query, setQuery] = useState("");
-  const [activeCollection, setActiveCollection] = useState("nlp-survey");
+  const [activeCollection, setActiveCollection] = useState("all");
   const [activePaperId, setActivePaperId] = useState("vaswani-2017");
   const [activeTab, setActiveTab] = useState("qa");
   const [activeFilter, setActiveFilter] = useState("All");
   const [isUploadOpen, setUploadOpen] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [userCollections, setUserCollections] = useState(() => readJsonStorage(COLLECTIONS_STORAGE_KEY, []));
+  const [paperCollectionOverrides, setPaperCollectionOverrides] = useState(() => readJsonStorage(PAPER_COLLECTIONS_STORAGE_KEY, {}));
   const [uploadMode, setUploadMode] = useState("pdf");
   const [uploadStatus, setUploadStatus] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -179,7 +199,7 @@ function App() {
     title: paper.filename.replace(/\.pdf$/i, ""),
     authors: "Uploaded paper",
     year: new Date(paper.uploaded_at).getFullYear(),
-    collection: "all",
+    collection: paperCollectionOverrides[paper.id] || "uploaded",
     type: paper.status,
     status: paper.status === "indexed" ? "indexed" : "processing",
     citations: 0,
@@ -189,7 +209,30 @@ function App() {
     tags: [paper.status, paper.storage_provider],
     color: paper.status === "indexed" ? "mint" : "blue"
   }));
-  const visiblePapers = backendPapers.length > 0 ? backendPapers : papers;
+  const localPapers = papers.map((paper) => ({
+    ...paper,
+    collection: paperCollectionOverrides[paper.id] || paper.collection
+  }));
+  const visiblePapers = backendPapers.length > 0 ? backendPapers : localPapers;
+  const collectionOptions = useMemo(() => {
+    const baseOptions = [
+      { id: "all", name: "Library" },
+      ...seedCollections,
+      { id: "uploaded", name: "Uploaded" }
+    ];
+    const merged = [...baseOptions, ...userCollections];
+    const unique = merged.filter(
+      (collection, index, list) => list.findIndex((item) => item.id === collection.id) === index
+    );
+
+    return unique.map((collection) => ({
+      ...collection,
+      count:
+        collection.id === "all"
+          ? visiblePapers.length
+          : visiblePapers.filter((paper) => paper.collection === collection.id).length
+    }));
+  }, [userCollections, visiblePapers]);
 
   const filteredPapers = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -212,7 +255,7 @@ function App() {
 
   const activePaper = visiblePapers.find((paper) => paper.id === activePaperId) ?? visiblePapers[0];
   const activeCollectionLabel =
-    collections.find((collection) => collection.id === activeCollection)?.name ?? "Research Workspace";
+    collectionOptions.find((collection) => collection.id === activeCollection)?.name ?? "Research Workspace";
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -291,8 +334,30 @@ function App() {
       loadPanel("graph");
     }
     if (kind === "collection") {
-      setActiveCollection("all");
-      setInsight("New collection flow queued. Database-backed collections will land after user accounts.");
+      const name = window.prompt("Collection name");
+      const cleanName = name?.trim();
+
+      if (!cleanName) return;
+
+      const id = slugify(cleanName) || `collection-${Date.now()}`;
+      const finalId = collectionOptions.some((collection) => collection.id === id)
+        ? `${id}-${Date.now()}`
+        : id;
+
+      setUserCollections((current) => [
+        ...current,
+        { id: finalId, name: cleanName }
+      ]);
+
+      if (activePaper?.id) {
+        setPaperCollectionOverrides((current) => ({
+          ...current,
+          [activePaper.id]: finalId
+        }));
+      }
+
+      setActiveCollection(finalId);
+      setInsight(`Created ${cleanName} and added ${activePaper?.title ?? "the active paper"}.`);
     }
   }
 
@@ -310,10 +375,26 @@ function App() {
   }, []);
 
   useEffect(() => {
+    window.localStorage.setItem(COLLECTIONS_STORAGE_KEY, JSON.stringify(userCollections));
+  }, [userCollections]);
+
+  useEffect(() => {
+    window.localStorage.setItem(PAPER_COLLECTIONS_STORAGE_KEY, JSON.stringify(paperCollectionOverrides));
+  }, [paperCollectionOverrides]);
+
+  useEffect(() => {
     if (!visiblePapers.some((paper) => paper.id === activePaperId)) {
       setActivePaperId(visiblePapers[0]?.id ?? "");
     }
   }, [activePaperId, visiblePapers]);
+
+  useEffect(() => {
+    const selectedCollection = collectionOptions.find((collection) => collection.id === activeCollection);
+
+    if (!selectedCollection) {
+      setActiveCollection("all");
+    }
+  }, [activeCollection, collectionOptions]);
 
   useEffect(() => {
     const pending = apiPapers.filter((paper) => ["uploaded", "processing"].includes(paper.status));
@@ -371,6 +452,7 @@ function App() {
       activePaperId={activePaperId}
       activeTab={activeTab}
       apiError={apiError}
+      collectionOptions={collectionOptions}
       filteredPapers={filteredPapers}
       insight={insight}
       isLoadingPapers={isLoadingPapers}
@@ -525,6 +607,7 @@ function WorkspacePage({
   activePaperId,
   activeTab,
   apiError,
+  collectionOptions,
   filteredPapers,
   insight,
   isLoadingPapers,
@@ -572,8 +655,8 @@ function WorkspacePage({
         <div className={classNames("workspace-grid min-h-[calc(100vh-104px)] overflow-hidden border border-stone-700/80 bg-[#20201c] shadow-panel", !isSidebarOpen && "sidebar-collapsed")}>
           <Sidebar
             activeCollection={activeCollection}
+            collections={collectionOptions}
             setActiveCollection={setActiveCollection}
-            totalCount={filteredPapers.length}
             onAction={onAction}
           />
 
@@ -584,6 +667,7 @@ function WorkspacePage({
             apiError={apiError}
             filteredPapers={filteredPapers}
             isLoadingPapers={isLoadingPapers}
+            paperCount={filteredPapers.length}
             setActiveFilter={setActiveFilter}
             setActivePaperId={setActivePaperId}
             setUploadMode={setUploadMode}
@@ -681,18 +765,21 @@ function Metric({ label, value, suffix }) {
   );
 }
 
-function Sidebar({ activeCollection, setActiveCollection, totalCount, onAction }) {
+function Sidebar({ activeCollection, collections, setActiveCollection, onAction }) {
+  const libraryCount = collections.find((collection) => collection.id === "all")?.count ?? 0;
+  const visibleCollections = collections.filter((collection) => collection.id !== "all");
+
   return (
     <aside className="workspace-sidebar hidden border-r border-stone-700/80 bg-[#282823] p-4 lg:block">
       <p className="eyebrow mb-3">Workspace</p>
       <button
-        className={classNames("nav-row selected")}
+        className={classNames("nav-row", activeCollection === "all" && "selected")}
         onClick={() => setActiveCollection("all")}
         type="button"
       >
         <Library size={19} />
         Library
-        <span>{totalCount}</span>
+        <span>{libraryCount}</span>
       </button>
       <button className="nav-row" onClick={() => onAction("compare")} type="button">
         <GitCompareArrows size={18} />
@@ -706,7 +793,7 @@ function Sidebar({ activeCollection, setActiveCollection, totalCount, onAction }
 
       <p className="eyebrow mb-3 mt-8">Collections</p>
       <div className="space-y-1">
-        {collections.map((collection) => (
+        {visibleCollections.map((collection) => (
           <button
             className={classNames("nav-row", activeCollection === collection.id && "active")}
             key={collection.id}
@@ -735,6 +822,7 @@ function PaperRail({
   apiError,
   filteredPapers,
   isLoadingPapers,
+  paperCount,
   setActiveFilter,
   setActivePaperId,
   setUploadMode,
@@ -773,7 +861,7 @@ function PaperRail({
         </button>
 
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <Stat value="12" label="Papers" />
+          <Stat value={paperCount} label="Papers" />
           <Stat value="3" label="Conflicts" />
           <Stat value="4" label="Clusters" />
         </div>
