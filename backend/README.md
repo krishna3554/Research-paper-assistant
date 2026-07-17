@@ -241,6 +241,26 @@ Graph panel        -> GET /graph
 
 Review, compare, conflicts, and graph currently compute lightweight structured outputs from PostgreSQL chunk metadata and indexed text. They are backend-backed, but not yet persisted as separate report tables.
 
+Workspace collections currently work client-side:
+
+```text
+Library opens by default
+Uploaded backend papers appear under the Uploaded collection
+Collection counts are derived from the visible paper list
+New collection prompts for a name
+The active paper is assigned to the new collection
+Custom collections and paper assignments are saved in browser localStorage
+```
+
+These client-side collection keys are used:
+
+```text
+papermind.collections
+papermind.paperCollections
+```
+
+Future production work should move collections into PostgreSQL once user accounts and multi-device persistence are added.
+
 ## Storage Model
 
 PostgreSQL stores metadata and chunk audit records:
@@ -290,6 +310,7 @@ Manual smoke test:
 6. Poll paper status until indexed
 7. Test /ask, /review, /compare, /conflicts, and /graph
 8. Open the frontend workspace and confirm all panels load backend data
+9. Confirm Library, Uploaded, seeded collections, and New collection filtering work
 ```
 
 ## Do Not Commit
