@@ -313,16 +313,3 @@ Manual smoke test:
 9. Confirm Library, Uploaded, seeded collections, and New collection filtering work
 ```
 
-## Do Not Commit
-
-These local/generated paths should stay out of git:
-
-```text
-backend/.env
-backend/.venv
-backend/chroma_db
-backend/tmp
-__pycache__
-node_modules
-dist
-```
