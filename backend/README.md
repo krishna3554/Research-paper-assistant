@@ -293,11 +293,6 @@ backend/.venv/bin/python -m py_compile backend/api.py backend/config.py backend/
 backend/.venv/bin/python -c "import sys; sys.path.insert(0, 'backend'); import api; print(len(api.app.routes))"
 ```
 
-Frontend build:
-
-```bash
-npm run build
-```
 
 Manual smoke test:
 
@@ -312,4 +307,3 @@ Manual smoke test:
 8. Open the frontend workspace and confirm all panels load backend data
 9. Confirm Library, Uploaded, seeded collections, and New collection filtering work
 ```
-
