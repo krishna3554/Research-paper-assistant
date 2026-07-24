@@ -1,5 +1,4 @@
 # PaperMind Backend
-
 FastAPI backend for PaperMind, a research paper assistant with citation-backed RAG over uploaded PDFs.
 
 ## Stack
