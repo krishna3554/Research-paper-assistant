@@ -4,3 +4,4 @@ iteration	timestamp	commit	metric	delta	guard	guard-metric	status	description
 3	1786197525	d1718adf	50	0.0	-	-	crash	add tests for models.py - SQLAlchemy defaults need session
 4	1786197848	0e6a729c	49	-1.0	pass	-	keep	add tests for api.py pure functions (compact_text, paper_title)
 5	1786197941	00bdaad5	52	3.0	pass	-	keep	add tests for db.py get_db generator
+6	1786198045	e1ec7bb1	58	6.0	pass	-	keep	add tests for resolve_source_url
