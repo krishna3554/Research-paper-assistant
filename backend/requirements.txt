@@ -15,3 +15,5 @@ psycopg[binary]
 alembic
 boto3
 pydantic-settings
+pytest
+pytest-cov
