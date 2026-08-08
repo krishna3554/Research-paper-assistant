@@ -1,4 +1,3 @@
 # metric_direction: higher_is_better
 iteration	timestamp	commit	metric	delta	guard	guard-metric	status	description
 0	1786197172	03b89fea	44	0.0	-	-	baseline	initial state
-2	1786197409	74d1ded3	50	0.0	-	-	crash	add tests for storage.py - test failed due to module-level constants
