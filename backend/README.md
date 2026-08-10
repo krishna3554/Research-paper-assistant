@@ -281,7 +281,7 @@ MinIO locally now
 AWS S3 later
 ```
 
-Chroma stores vector embeddings for semantic retrieval.
+Chroma stores vector embeddings for semantic retrieval(Vector DB).
 
 ## Verification
 
