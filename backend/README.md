@@ -10,6 +10,7 @@ FastAPI backend for PaperMind, a research paper assistant with citation-backed R
 - LangChain for retrieval and LLM orchestration
 - LM Studio for local OpenAI-compatible LLM inference
 - Alembic for database migrations
+- Best cloud models support
 
 ## Local Services
 
@@ -280,7 +281,6 @@ Object storage stores original PDFs:
 MinIO locally now
 AWS S3 later
 ```
-
 Chroma stores vector embeddings for semantic retrieval(Vector DB).
 
 ## Verification
@@ -291,7 +291,6 @@ Backend syntax and app import from the project root:
 backend/.venv/bin/python -m py_compile backend/api.py backend/config.py backend/db.py backend/storage.py backend/rag_text_demo.py backend/ingestion.py backend/models.py
 backend/.venv/bin/python -c "import sys; sys.path.insert(0, 'backend'); import api; print(len(api.app.routes))"
 ```
-
 
 Manual smoke test:
 
